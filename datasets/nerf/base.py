@@ -21,7 +21,7 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, idx):
         if self.split.startswith('train'):
-            # training pose is retrieved in train.py
+            # training pose is retrieved in train_nerf.py
             if self.ray_sampling_strategy == 'all_images': # randomly select images
                 img_idxs = np.random.choice(len(self.poses), self.batch_size)
             elif self.ray_sampling_strategy == 'same_image': # randomly select ONE image

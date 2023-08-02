@@ -1,0 +1,46 @@
+{
+  "network": {
+    "encoding": {
+      "feat_dim": 2,
+      "base_resolution": 64,
+      "per_level_scale": 2.0,
+      "base_sigma": 8.0,
+      "exp_sigma": 1.5,
+      "grid_embedding_std": 0.001
+    },
+    "SIREN": {
+      "dims" : [128, 128, 128, 128, 128],
+      "w0": 15.0,
+      "w1": 25.0,
+      "size_factor": 2
+    }
+  },
+  "training": {
+    "LearningRateSchedule" : [
+      {
+        "type" : "Step",
+        "initial" : 0.0001,
+        "interval" : 5000,
+        "factor" : 0.5
+      },
+      {
+        "type" : "Step",
+        "initial" : 0.0001,
+        "interval" : 5000,
+        "factor" : 0.5
+      },
+      {
+        "type" : "Step",
+        "initial" : 0.001,
+        "interval" : 5000,
+        "factor" : 0.5
+      },
+      {
+        "type" : "Step",
+        "initial" : 0.005,
+        "interval" : 5000,
+        "factor" : 0.5
+      }],
+    "lr_threshold": 1e-5
+  }
+}

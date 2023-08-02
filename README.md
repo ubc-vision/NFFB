@@ -1,7 +1,5 @@
 # Neural Fourier Filter Bank
 
-> Notice: Still reorganizing and consolidating codes...The current repo only contains the training and inference parts for NeRF. 
-> Codes for 2D fitting and 3D fitting, together with the CUDA implementations will be released afterwards.  
 
 This repository contains the code (in [PyTorch Lightning](https://www.pytorchlightning.ai/index.html)) for the paper:
 
@@ -47,7 +45,7 @@ If you have any questions, please feel free to contact Zhijie Wu (wzj.micker@gma
 
 A quickstart:
 ```bash
---root_dir <path/to/lego> --exp_name Lego --num_epochs 30 --lr 2e-2 --eval_lpips --no_save_test
+python train_nerf.py --root_dir <path/to/lego> --exp_name Lego --num_epochs 30 --lr 2e-2 --eval_lpips --no_save_test
 ```
 It will train the Lego scene for 30k steps. `--no_save_test` is to disable saving synthesized images.
 
@@ -59,24 +57,32 @@ To compute the metrics for the eight Blender scenes, please run the script `benc
 ## 2D Image Fitting
 ![2d_fitting](./docs/figures/2d_fitting.png)
 
-> Codes to be released
+```bash
+python train_img.py --config <path/to/config.json> --input_path <path/to/image>
+```
+
+Currently, the model is trained for 50k iterations. But our experiences show that the model has already achieved comparable results near 20k iterations' training.
 
 
 ## 3D Shape Fitting
 ![3d_fitting](./docs/figures/3d_fitting.png)
 
-> Codes to be released
+```bash
+python train_sdf.py --config <path/to/config.json> --input_path <path/to/shape>
+```
 
+Similar to **2D Image Fitting**, the model is trained with 50k iterations to achieve improved geometric details. However, using `size=100` instead of `size=1000` in the train_dataset (`train_sdf.py`) would slightly reduce the output quality while significantly accelerating the training process.
 
 ## Citation and License
 
 ```
-@misc{wu2022neural,
-      title={Neural Fourier Filter Bank}, 
-      author={Zhijie Wu and Yuhe Jin and Kwang Moo Yi},
-      year={2022},
-      eprint={2212.01735},
-      archivePrefix={arXiv}
+@InProceedings{Wu_2023_CVPR,
+    author    = {Wu, Zhijie and Jin, Yuhe and Yi, Kwang Moo},
+    title     = {Neural Fourier Filter Bank},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2023},
+    pages     = {14153-14163}
 }
 ```
 
@@ -86,5 +92,4 @@ Our codebase is under the MIT License.
 ## TODO
 
 - [ ] Finish the CUDA version
-- [ ] Release codes for 2D image fitting & 3D shape reconstruction
 

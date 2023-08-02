@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from opt import get_opts
+from scripts.nvs.opt import get_opts
 import os
 import glob
 import imageio
@@ -11,22 +11,22 @@ from einops import rearrange
 # data
 from torch.utils.data import DataLoader
 from datasets import dataset_dict
-from datasets.ray_utils import axisangle_to_R, get_rays
+from datasets.nerf.ray_utils import axisangle_to_R, get_rays
 
 # models
 import commentjson as json
 from kornia.utils.grid import create_meshgrid3d
-from models.networks import NFFB
-from models.rendering import render, MAX_SAMPLES
+from models.networks.nerf.NFFB_nerf import NFFB
+from models.networks.nerf.rendering import render, MAX_SAMPLES
 
 # optimizer, losses
 from apex.optimizers import FusedAdam
-from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
-from losses import NeRFLoss
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from models.loss.nerf.losses import NeRFLoss
 
 # metrics
 from torchmetrics import (
-    PeakSignalNoiseRatio, 
+    PeakSignalNoiseRatio,
     StructuralSimilarityIndexMeasure
 )
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
@@ -52,7 +52,6 @@ def depth2img(depth):
 
     return depth_img
 
-### PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure and LearnedPerceptualImagePatchSimilarity are three metrics to compute
 class NeRFSystem(LightningModule):
     def __init__(self, hparams):
         super().__init__()
@@ -63,12 +62,12 @@ class NeRFSystem(LightningModule):
 
         self.time = str(time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()))
 
-        with open(self.hparams.config) as config_file:
-            self.net_config = json.load(config_file)
-
         exp_dir = os.path.join(f"experiments/", self.time)
         if not os.path.isdir(exp_dir):
             os.makedirs(exp_dir)
+
+        with open(self.hparams.config) as config_file:
+            self.net_config = json.load(config_file)
 
         ### Save the configuration file
         path = f"{exp_dir}/config.json"
@@ -81,14 +80,12 @@ class NeRFSystem(LightningModule):
         self.val_ssim = StructuralSimilarityIndexMeasure(data_range=1)
         if self.hparams.eval_lpips:
             self.val_lpips = LearnedPerceptualImagePatchSimilarity('vgg')
-            # self.val_lpips = LearnedPerceptualImagePatchSimilarity('alex')
             ### Do not train the network parameters which are used to compute metrics
             for p in self.val_lpips.net.parameters():
                 p.requires_grad = False
 
-        ### rgb_act means the activation function in the end of rgb network?
         rgb_act = 'None' if self.hparams.use_exposure else 'Sigmoid'
-        self.model = NFFB(self.net_config, scale=self.hparams.scale, rgb_act=rgb_act)
+        self.model = NFFB(self.net_config["network"], scale=self.hparams.scale, rgb_act=rgb_act)
         G = self.model.grid_size
         self.model.register_buffer('density_grid', torch.zeros(self.model.cascades, G**3))
         self.model.register_buffer('grid_coords',
@@ -152,15 +149,14 @@ class NeRFSystem(LightningModule):
             if n not in ['dR', 'dT']: net_params += [p]
 
         opts = []
-        net_params = self.model.get_params(self.net_config["network"]["LearningRateSchedule"])
+        net_params = self.model.get_params(self.net_config["training"]["LearningRateSchedule"])
         self.net_opt = FusedAdam(net_params, betas=(0.9, 0.99), eps=1e-15)
         opts += [self.net_opt]
         if self.hparams.optimize_ext:
             opts += [FusedAdam([self.dR, self.dT], 1e-6)] # learning rate is hard-coded
         net_sch = CosineAnnealingLR(self.net_opt,
                                     self.hparams.num_epochs,
-                                    self.net_config["network"]["lr_threshold"])
-        # net_sch = StepLR(self.net_opt, step_size=5, gamma=0.5)
+                                    self.net_config["training"]["lr_threshold"])
 
         return opts, [net_sch]
 
@@ -181,6 +177,11 @@ class NeRFSystem(LightningModule):
         self.model.mark_invisible_cells(self.train_dataset.K.to(self.device),
                                         self.poses,
                                         self.train_dataset.img_wh)
+
+        model_size = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        self.log("misc/model_size", model_size)
+        print(f"\nThe model size: {model_size}")
+
 
     def training_step(self, batch, batch_nb, *args):
         if self.global_step % self.update_interval == 0:
@@ -224,6 +225,7 @@ class NeRFSystem(LightningModule):
     def backward(self, loss, optimizer, optimizer_idx):
         # do a custom way of backward to retain graph
         loss.backward(retain_graph=True)
+
 
     def on_validation_start(self):
         torch.cuda.empty_cache()

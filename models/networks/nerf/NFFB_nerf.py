@@ -8,12 +8,12 @@ import numpy as np
 
 from .rendering import NEAR_DISTANCE
 
-from .FFB_encoder import FFB_encoder
-from .Sine import sine_init, Sine
+from models.networks.FFB_encoder import FFB_encoder
+from models.networks.Sine import sine_init, Sine
 
 
 class NFFB(nn.Module):
-    def __init__(self, config_info, scale, rgb_act='Sigmoid'):
+    def __init__(self, config, scale, rgb_act='Sigmoid'):
         super().__init__()
 
         self.rgb_act = rgb_act
@@ -32,8 +32,8 @@ class NFFB(nn.Module):
             torch.zeros(self.cascades*self.grid_size**3//8, dtype=torch.uint8))
 
 
-        self.xyz_encoder = FFB_encoder(n_input_dims=3, network_config=config_info["network"],
-                                       encoding_config=config_info["encoding"], bound=self.scale)
+        self.xyz_encoder = FFB_encoder(n_input_dims=3, encoding_config=config["encoding"],
+                                       network_config=config["SIREN"], bound=self.scale)
 
         ## sigma network
         self.num_layers = num_layers = 1
@@ -55,9 +55,31 @@ class NFFB(nn.Module):
             sigma_net.append(nn.Linear(in_dim, out_dim, bias=False))
         self.sigma_net = nn.ModuleList(sigma_net)
 
-        self.sin_w0 = config_info["network"]["SIREN"]["w1"]
+        self.sin_w0 = config["SIREN"]["w1"]
         self.sin_activation = Sine(w0=self.sin_w0)
         self.init_siren()
+
+        # ### sigma network
+        # self.sigma_net = \
+        #     tcnn.Network(
+        #         n_input_dims=self.xyz_encoder.out_dim, n_output_dims=16,
+        #         network_config={
+        #             "otype": "FullyFusedMLP",
+        #             "activation": "ReLU",
+        #             "output_activation": "None",
+        #             "n_neurons": 64,
+        #             "n_hidden_layers": 1,
+        #         }
+        #     )
+
+        # self.dir_encoder = \
+        #     tcnn.Encoding(
+        #         n_input_dims=3,
+        #         encoding_config={
+        #             "otype": "SphericalHarmonics",
+        #             "degree": 4,
+        #         },
+        #     )
 
         self.dir_encoder = \
             tcnn.Encoding(
@@ -102,6 +124,7 @@ class NFFB(nn.Module):
             lin = self.sigma_net[l]
             sine_init(lin, w0=self.sin_w0)
 
+    ### TODO - Transform the input coordinates into right range when feeding it into xyz_encoder()
     def density(self, x, return_feat=False):
         """
         Inputs:
@@ -111,11 +134,16 @@ class NFFB(nn.Module):
         Outputs:
             sigmas: (N)
         """
+        # x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
         h = self.xyz_encoder(x)
+        # h = self.sigma_net(h)
+        #
         for l in range(self.num_layers):
             h = self.sigma_net[l](h)
             if l != self.num_layers - 1:
+                # h = F.relu(h, inplace=True)
                 h = self.sin_activation(h)
+                # h = self.sin_activation(h * self.sin_w0)
 
         sigmas = TruncExp.apply(h[:, 0])
         if return_feat: return sigmas, h
@@ -271,6 +299,7 @@ class NFFB(nn.Module):
             density_grid_tmp[c, indices] = self.density(xyzs_w)
 
         if erode:
+            # My own logic. decay more the cells that are visible to few cameras
             decay = torch.clamp(decay**(1/self.count_grid), 0.1, 0.95)
         self.density_grid = \
             torch.where(self.density_grid < 0, self.density_grid,
@@ -278,16 +307,17 @@ class NFFB(nn.Module):
 
         mean_density = self.density_grid[self.density_grid>0].mean().item()
 
+        ### Seems that, this line of code turn the density grids into a 8-bit integer array to save space
         vren.packbits(self.density_grid, min(mean_density, density_threshold), self.density_bitfield)
 
     @torch.no_grad()
     # optimizer utils
     def get_params(self, LR_schedulers):
         params = [
-            {'params': self.xyz_encoder.parameters(), 'lr': LR_schedulers[0]["Initial"]},
-            {'params': self.sigma_net.parameters(), 'lr': LR_schedulers[1]["Initial"]},
-            {'params': self.dir_encoder.parameters(), 'lr': LR_schedulers[2]["Initial"]},
-            {'params': self.rgb_net.parameters(), 'lr': LR_schedulers[3]["Initial"]},
+            {'params': self.xyz_encoder.parameters(), 'lr': LR_schedulers[0]["initial"]},
+            {'params': self.sigma_net.parameters(), 'lr': LR_schedulers[1]["initial"]},
+            {'params': self.dir_encoder.parameters(), 'lr': LR_schedulers[2]["initial"]},
+            {'params': self.rgb_net.parameters(), 'lr': LR_schedulers[3]["initial"]},
         ]
 
         return params

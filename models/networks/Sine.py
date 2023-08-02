@@ -1,3 +1,8 @@
+"""
+These codes are adapted from SIREN (https://github.com/vsitzmann/siren)
+"""
+
+
 import torch
 from torch import nn
 import numpy as np

@@ -20,7 +20,7 @@ def get_opts():
                         help='scene scale (whole scene must lie in [-scale, scale]^3')
     parser.add_argument('--use_exposure', action='store_true', default=False,
                         help='whether to train in HDR-NeRF setting')
-    parser.add_argument('--config', nargs="?", type=str, default="config/nerf/FFB_config.json")
+    parser.add_argument('--config', nargs="?", type=str, default="config/nerf/config.json")
 
     # loss parameters
     parser.add_argument('--distortion_loss_w', type=float, default=0,

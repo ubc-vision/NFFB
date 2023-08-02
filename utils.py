@@ -55,3 +55,17 @@ def seed_everything(seed):
     pytorch_lightning.seed_everything(seed, workers=True)
     #torch.backends.cudnn.deterministic = True
     #torch.backends.cudnn.benchmark = True
+
+
+
+def process_batch_in_chunks(in_ccords, model, max_chunk_size=1024):
+    chunk_outs = []
+
+    coord_chunks = torch.split(in_ccords, max_chunk_size)
+    for chunk_batched_in in coord_chunks:
+        tmp_img = model(chunk_batched_in)
+        chunk_outs.append(tmp_img.detach())
+
+    batched_out = torch.cat(chunk_outs, dim=0)
+
+    return batched_out
